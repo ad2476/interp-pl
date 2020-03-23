@@ -4,11 +4,18 @@ use std::io::prelude::*;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+#[allow(dead_code)]
 mod interp;
 
 enum RunError {
     IoError(PathBuf, std::io::Error),
     EvalError(String),
+}
+
+impl From<interp::Error> for RunError {
+    fn from(other: interp::Error) -> Self {
+        RunError::EvalError(other.to_string())
+    }
 }
 
 impl fmt::Display for RunError {
@@ -36,6 +43,10 @@ fn eval(source: String) -> Result<(), RunError> {
         )
     })?;
     println!("{:?}", tokens);
+
+    let ast = interp::Parser::parse(&tokens)?;
+    println!("{:#?}", ast);
+
     Ok(())
 }
 
@@ -63,7 +74,10 @@ fn run_repl() -> Result<(), RunError> {
             _ => (),
         }
 
-        eval(input)?;
+        match eval(input) {
+            Err(e) => println!("{}", e),
+            _ => {}
+        };
     }
 }
 

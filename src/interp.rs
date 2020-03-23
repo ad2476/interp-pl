@@ -1,8 +1,11 @@
 use std::fmt;
 
+mod parse;
 mod scan;
+pub use parse::Parser;
 pub use scan::Scanner;
 
+#[derive(Debug)]
 pub struct Error {
     line: usize,
     message: String,
@@ -14,7 +17,7 @@ impl fmt::Display for Error {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Lexeme {
     LeftParen,
     RightParen,
@@ -148,7 +151,7 @@ impl Lexeme {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token<'a> {
     lexeme: Lexeme,
     span: &'a str,
@@ -161,14 +164,14 @@ impl Token<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
-enum UnaryOp {
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
     LogicalNot,
     Negate,
 }
 
-#[derive(Debug, Clone)]
-enum BinaryOp {
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
     Equals,
     NotEquals,
     Less,
@@ -181,7 +184,22 @@ enum BinaryOp {
     Divide,
 }
 
-#[derive(Debug, Clone)]
+/// Expression.
+///
+/// Represents abstract syntax for the following grammar:
+/// ```
+/// expression → literal
+///            | unary
+///            | binary
+///            | grouping ;
+/// literal    → NUMBER | STRING | "false" | "true" | "nil" ;
+/// grouping   → "(" expression ")" ;
+/// unary      → ( "-" | "!" ) expression ;
+/// binary     → expression operator expression ;
+/// operator   → "==" | "!=" | "<" | "<=" | ">" | ">="
+///            | "+"  | "-"  | "*" | "/" ;
+/// ```
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
     EString(String),
