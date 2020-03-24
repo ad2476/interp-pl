@@ -4,7 +4,6 @@ use std::io::prelude::*;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-#[allow(dead_code)]
 mod interp;
 
 enum RunError {

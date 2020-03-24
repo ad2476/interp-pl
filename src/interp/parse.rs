@@ -20,13 +20,17 @@ type RuleMatchResult<'a> = Result<(Box<Expr>, Option<&'a [Token<'a>]>), Error>;
 type GrammarRule<'a> = fn(&'a [Token]) -> RuleMatchResult<'a>;
 
 impl Parser {
+    // TODO: synchronise errors at statement boundaries.
 
     const UNMATCHED_LEFT_PAREN: &'static str = "Unmatched left paren";
 
+    /// Construct a new Parser. Unused for now.
     pub fn new() -> Parser {
         Parser {}
     }
 
+    /// Parse a sequence of tokens.
+    /// Returns either the root AST node or an error.
     pub fn parse(tokens: &[Token]) -> Result<Box<Expr>, Error> {
         let (expr, rest) = Parser::expression(tokens)?;
         
@@ -38,10 +42,12 @@ impl Parser {
     }
 
     fn expression<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // expression → equality
         Parser::equality(tokens)
     }
 
     fn equality<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // equality → comparison ( ( "!=" | "==" ) comparison )*
         Parser::binop_leftassoc(tokens, |l: &Lexeme| match l {
             Lexeme::DoubleEqual => Some(BinaryOp::Equals),
             Lexeme::BangEqual => Some(BinaryOp::NotEquals),
@@ -50,6 +56,7 @@ impl Parser {
     }
 
     fn comparison<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // comparison → addition ( ( ">" | ">=" | "<" | "<=" ) addition )*
         Parser::binop_leftassoc(tokens, |l: &Lexeme| match l {
             Lexeme::Greater => Some(BinaryOp::Greater),
             Lexeme::GreaterEqual => Some(BinaryOp::GreaterEqual),
@@ -60,6 +67,7 @@ impl Parser {
     }
 
     fn addition<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // addition → multiplication ( ( "-" | "+" ) multiplication )*
         Parser::binop_leftassoc(tokens, |l: &Lexeme| match l {
             Lexeme::Plus=> Some(BinaryOp::Add),
             Lexeme::Minus => Some(BinaryOp::Subtract),
@@ -68,6 +76,7 @@ impl Parser {
     }
 
     fn multiplication<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // multiplication → unary ( ( "/" | "*" ) unary )*
         Parser::binop_leftassoc(tokens, |l: &Lexeme| match l {
             Lexeme::Star => Some(BinaryOp::Multiply),
             Lexeme::Slash => Some(BinaryOp::Divide),
@@ -75,24 +84,34 @@ impl Parser {
         }, Parser::unary)
     }
 
+    // Parses a left-associative series of binary operators:
+    //   binop_leftassoc → descend ( ( op_matcher ) descend)*
+    // where op_matcher takes a Lexeme and figures out its BinaryOp variant,
+    // if one exists.
     fn binop_leftassoc<'a, F>(tokens: &'a [Token], op_matcher: F, descend: GrammarRule<'a>)
         -> RuleMatchResult<'a>
         where F: Fn(&Lexeme) -> Option<BinaryOp>
     {
+        // 1. Parse the lhs expr.
         let (mut expr, mut rest_tokens) = descend(tokens)?;
 
+        // 2. While there are tokens to the right of the lhs:
         while let Some(rest_) = rest_tokens {
+            // 3. Check the next token is a valid operator.
             let op_token = &rest_[0];
             if let Some(op) = op_matcher(&op_token.lexeme) {
+                // 4. Check the rhs tokens exist.
                 let rhs_slice = rest_.get(1..).ok_or(Error {
                     line: op_token.line,
                     message: String::from("Expected rhs for binary op"),
                 })?;
+                // 5. Parse the rhs expr.
                 let (rhs, rest) = descend(rhs_slice)?;
+                // 6. Construct an expr of the (op, lhs, rhs) and call this the lhs.
                 expr = Box::new(Expr::BinOp(op, expr, rhs));
-                rest_tokens = rest;
+                rest_tokens = rest; // whatever remains for the next iteration.
             } else {
-                break;
+                break; // 3.5. Stop parsing if not.
             }
         }
 
@@ -121,6 +140,7 @@ impl Parser {
     }
 
     fn primary<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // primary → NUMBER | STRING | "false" | "true" | "nil" | "(" expression ")"
         let token = &tokens[0];
         let rest = tokens.get(1..);
         let rule_match = match &token.lexeme {
@@ -129,9 +149,11 @@ impl Parser {
             Lexeme::False => Some((Box::new(Expr::Bool(false)), rest)),
             Lexeme::True => Some((Box::new(Expr::Bool(true)), rest)),
             Lexeme::LeftParen => {
+                // Make sure there are tokens left for us to parse.
                 let rest = rest.ok_or(Parser::unmatched_paren_err(token.line))?;
+                // Parse the expression in the parens group.
                 let (expr, rest_) = Parser::parens_group(rest)?;
-                Some((expr, rest_))
+                Some((Box::new(Expr::Group(expr)), rest_))
             },
             _ => None,
         };
@@ -144,11 +166,14 @@ impl Parser {
     }
 
     fn parens_group<'a>(tokens: &'a [Token]) -> RuleMatchResult<'a> {
+        // Try to parse the expression.
         let (expr, rest) = Parser::expression(tokens)?;
 
+        // Make sure there are still tokens left.
         let rest = rest.ok_or(Parser::unmatched_paren_err(tokens[0].line))?;
         let token = &rest[0];
         match &token.lexeme {
+            // Check this token is a closing parenthesis.
             Lexeme::RightParen => Ok((expr, rest.get(1..))),
             _ => Err(Parser::unmatched_paren_err(token.line)),
         }
