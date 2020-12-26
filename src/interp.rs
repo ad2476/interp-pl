@@ -141,6 +141,7 @@ impl Lexeme {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_literal(&self) -> bool {
         match &self {
             Lexeme::Identifier(_) => true,
@@ -207,4 +208,16 @@ pub enum Expr {
     Group(Box<Expr>),
     UnOp(UnaryOp, Box<Expr>),
     BinOp(BinaryOp, Box<Expr>, Box<Expr>),
+}
+
+pub enum Value {
+    Number(f64),
+    VString(String),
+    Bool(bool),
+}
+
+impl Expr {
+    pub fn eval(&self) -> Value {
+        Value::Bool(false)
+    }
 }
